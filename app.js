@@ -798,19 +798,7 @@ document.addEventListener('DOMContentLoaded', () => {
         executeFilter();
     });
 
-    // View Toggle
-    viewTable.addEventListener('click', () => {
-        currentView = 'table';
-        viewTable.classList.add('active');
-        viewGrid.classList.remove('active');
-        renderResults(currentResults);
-    });
-    viewGrid.addEventListener('click', () => {
-        currentView = 'grid';
-        viewGrid.classList.add('active');
-        viewTable.classList.remove('active');
-        renderResults(currentResults);
-    });
+    // View Toggle (removed - always table view)
 
     // Mobile Filter Toggle
     let overlay = document.createElement('div');
