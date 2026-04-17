@@ -1,0 +1,10 @@
+# Sensitive files
+.netlify_token
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+
+# Deploy script (not needed on GitHub - Actions handles it)
+update.command
