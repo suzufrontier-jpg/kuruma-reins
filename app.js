@@ -754,6 +754,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initDualRange('dualLength');
     initDualRange('dualHeight');
     initDualRange('dualYear');
+    initDualRange('dualBudget');
     initSizePanel();
 
     // === Event Listeners ===
@@ -786,6 +787,8 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('dualLength')._reset();
         document.getElementById('dualHeight')._reset();
         document.getElementById('dualYear')._reset();
+        const dualBudget = document.getElementById('dualBudget');
+        if (dualBudget && dualBudget._reset) dualBudget._reset();
         executeFilter();
     });
 
