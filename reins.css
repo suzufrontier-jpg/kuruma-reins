@@ -1202,6 +1202,31 @@ body.inventory-mode .results-header {
     background: rgba(167, 139, 250, 0.06) !important;
 }
 
+/* ===== Inventory Thumbnails ===== */
+.inv-image {
+    width: 70px;
+    padding: 4px 6px !important;
+}
+.inv-thumb {
+    width: 64px;
+    height: 44px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    display: block;
+}
+.inv-thumb-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 64px;
+    height: 44px;
+    font-size: 22px;
+    background: var(--bg-sidebar);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
 /* ===== Compare Panel (floating bottom) ===== */
 .compare-panel {
     position: fixed;

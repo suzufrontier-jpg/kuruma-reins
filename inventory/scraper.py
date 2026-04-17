@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
-くるまれいんず - カーセンサー在庫スクレイピング
+くるまれいんず - カーセンサー在庫スクレイピング v2
 フロンティアモータース 橿原店
+- 一覧ページ + 各車の詳細ページからデータ取得
 """
 
 import urllib.request
 import re
 import json
 import os
+import time
 from datetime import datetime
 from html import unescape
 
@@ -25,11 +27,9 @@ def fetch_html(url):
 
 def parse_page(html):
     cars = []
-    # Split by each car listing block
     blocks = re.split(r'<div class="caset js_stock_list_cassette"', html)
 
-    for block in blocks[1:]:  # skip first (before first car)
-        # Skip SOLD OUT / 売約済 cars
+    for block in blocks[1:]:
         if re.search(r'SOLD\s*OUT|売約済|商談中|ご成約', block, re.IGNORECASE):
             continue
 
@@ -46,16 +46,14 @@ def parse_page(html):
         if maker_m:
             car["maker"] = maker_m.group(1).strip()
 
-        # Title (car name + grade)
+        # Title
         title_m = re.search(r'casetMedia__body__title"[^>]*>\s*<a[^>]*>([^<]+)<', block)
         if title_m:
             full_title = unescape(title_m.group(1)).replace("\u00a0", " ").strip()
-            # Split: first word = car name, rest = grade
             parts = full_title.split(" ", 1)
             car["name"] = parts[0]
             car["grade"] = parts[1] if len(parts) > 1 else ""
         else:
-            # fallback: from alt text
             alt_m = re.search(r'alt="([^"]+)"', block)
             if alt_m:
                 alt = unescape(alt_m.group(1)).replace("\u00a0", " ").strip()
@@ -64,7 +62,7 @@ def parse_page(html):
                 car["name"] = parts[1] if len(parts) > 1 else parts[0]
                 car["grade"] = " ".join(parts[2:4]) if len(parts) > 2 else ""
 
-        # Color - extract from spec block, looking for color-related text
+        # Color
         spec_m = re.search(r'casetMedia__body__spec"[^>]*>(.*?)</div>', block, re.DOTALL)
         if spec_m:
             ps = re.findall(r'<p[^>]*>(.*?)</p>', spec_m.group(1), re.DOTALL)
@@ -74,48 +72,34 @@ def parse_page(html):
                          "ステーションワゴン", "クーペ", "オープンカー", "トラック"}
             for p_text in ps:
                 clean = re.sub(r'<[^>]+>', '', p_text).strip()
-                if not clean:
-                    continue
-                if clean in skip or clean in body_types:
+                if not clean or clean in skip or clean in body_types:
                     continue
                 if re.match(r'フロア|インパネ|コラム', clean):
                     continue
-                # This should be the color
                 car["color"] = clean
                 break
 
         # Total Price
         total_m = re.search(r'totalPrice__price__main"[^>]*>(\d+)</span>\s*<span[^>]*>([^<]*)<', block)
         if total_m:
-            main = total_m.group(1)
-            sub = total_m.group(2).strip()
-            car["totalPrice"] = f"{main}{sub}万円"
+            car["totalPrice"] = f"{total_m.group(1)}{total_m.group(2).strip()}万円"
 
         # Base Price
         base_m = re.search(r'basePrice__price__main"[^>]*>(\d+)</span>\s*<span[^>]*>([^<]*)<', block)
         if base_m:
-            main = base_m.group(1)
-            sub = base_m.group(2).strip()
-            car["price"] = f"{main}{sub}万円"
+            car["price"] = f"{base_m.group(1)}{base_m.group(2).strip()}万円"
 
-        # Spec boxes: year, mileage, displacement, inspection, repair
+        # Spec boxes
         spec_boxes = re.findall(
-            r'specWrap__box__title"[^>]*>([^<]+)</p>\s*<p[^>]*>([^<]+)</p>',
-            block
-        )
+            r'specWrap__box__title"[^>]*>([^<]+)</p>\s*<p[^>]*>([^<]+)</p>', block)
         for title, value in spec_boxes:
-            t = title.strip()
-            v = value.strip()
-            if t == "年式":
-                car["year"] = v
-            elif t == "走行距離":
-                car["mileage"] = v + "万km"
-            elif t == "排気量":
-                car["displacement"] = v + "cc"
-            elif t == "修復歴":
-                car["repairHistory"] = v
+            t, v = title.strip(), value.strip()
+            if t == "年式": car["year"] = v
+            elif t == "走行距離": car["mileage"] = v + "万km"
+            elif t == "排気量": car["displacement"] = v + "cc"
+            elif t == "修復歴": car["repairHistory"] = v
 
-        # Inspection (special: may have 2 lines)
+        # Inspection
         insp_m = re.search(r'specWrap__box__title"[^>]*>車検有無</p>\s*<p[^>]*>([^<]+)</p>\s*<p[^>]*>([^<]*)</p>', block)
         if insp_m:
             y = insp_m.group(1).strip()
@@ -136,15 +120,77 @@ def parse_page(html):
                 img_url = "https:" + img_url
             car["image"] = img_url
 
-        # Only add if we have at minimum maker + name
         if car.get("maker") and car.get("name"):
             cars.append(car)
 
     return cars
 
 
+def fetch_detail_info(car):
+    """各車の詳細ページから追加情報を取得"""
+    url = car.get("url")
+    if not url:
+        return
+
+    try:
+        html = fetch_html(url)
+    except Exception as e:
+        print(f"    ⚠️ 詳細ページ取得失敗: {e}")
+        return
+
+    # Extract all th/td pairs
+    pairs = re.findall(r'<th[^>]*?>(.*?)</th>\s*<td[^>]*?>(.*?)</td>', html, re.DOTALL)
+    for th_raw, td_raw in pairs:
+        th = re.sub(r'<[^>]+>', '', th_raw).strip()
+        td = re.sub(r'<[^>]+>', '', td_raw).strip()
+        if not th or not td:
+            continue
+
+        if th == "ボディタイプ":
+            car["bodyType"] = td
+        elif th == "駆動方式":
+            car["driveType"] = td
+        elif th == "乗車定員":
+            car["seats"] = td
+        elif th == "エンジン種別":
+            car["engineType"] = td
+        elif th == "ドア数":
+            car["doors"] = td
+        elif th == "ミッション":
+            car["transmission"] = td
+        elif th == "ハンドル":
+            car["steering"] = td
+        elif th == "ワンオーナー" and td == "◯":
+            car["oneOwner"] = True
+
+    # Dimensions: 全長×全幅×全高 (clean HTML first)
+    clean_html = re.sub(r'<[^>]+>', ' ', html)
+    dim_m = re.search(r'(\d{3,5})\s*[×x]\s*(\d{3,5})\s*[×x]\s*(\d{3,5})\s*[\(（]?\s*mm', clean_html)
+    if dim_m:
+        car["length"] = int(dim_m.group(1))
+        car["width"] = int(dim_m.group(2))
+        car["height"] = int(dim_m.group(3))
+
+    # Weight
+    weight_m = re.search(r'車両重量.*?(\d{3,5})\s*\(?\s*kg', html, re.DOTALL)
+    if weight_m:
+        car["weight"] = int(weight_m.group(1))
+
+    # Fuel type
+    fuel_m = re.search(r'使用燃料\s*</th>\s*<td[^>]*>\s*([^<\s]+)', html, re.DOTALL)
+    if not fuel_m:
+        fuel_m = re.search(r'使用燃料.*?<td[^>]*>\s*(\S+)', html, re.DOTALL)
+    if fuel_m:
+        car["fuelType"] = fuel_m.group(1).strip()
+
+    # Seat rows
+    seat_rows_m = re.search(r'シート列数\s*</th>\s*<td[^>]*>\s*(\d)', html, re.DOTALL)
+    if seat_rows_m:
+        car["seatRows"] = seat_rows_m.group(1) + "列"
+
+
 def main():
-    print(f"🚗 くるまれいんず - 在庫データ更新")
+    print(f"🚗 くるまれいんず - 在庫データ更新 v2")
     print(f"🏪 {SHOP_NAME}")
     print(f"{'='*50}")
 
@@ -157,7 +203,7 @@ def main():
     print(f"  ✅ {len(cars)} 台を検出")
     all_cars.extend(cars)
 
-    # Check for more pages
+    # More pages
     page = 2
     while f"PAGE={page}" in html:
         print(f"\n📄 ページ {page} を取得中...")
@@ -167,7 +213,7 @@ def main():
         all_cars.extend(cars)
         page += 1
 
-    # Deduplicate by detailId
+    # Deduplicate
     seen = set()
     unique = []
     for car in all_cars:
@@ -175,6 +221,14 @@ def main():
         if did and did not in seen:
             seen.add(did)
             unique.append(car)
+
+    # Fetch detail info for each car
+    print(f"\n📋 各車の詳細情報を取得中... ({len(unique)}台)")
+    for i, car in enumerate(unique, 1):
+        name = f"{car.get('maker','')} {car.get('name','')}"
+        print(f"  [{i:2d}/{len(unique)}] {name}...")
+        fetch_detail_info(car)
+        time.sleep(0.3)  # Be polite to the server
 
     # Write JSON
     output = {
@@ -188,10 +242,10 @@ def main():
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
 
-    # Also write .js version for file:// protocol (no CORS issues)
+    # .js version
     js_file = OUTPUT_FILE.replace(".json", ".js")
     with open(js_file, "w", encoding="utf-8") as f:
-        f.write("// Auto-generated by scraper.py - " + output["lastUpdated"] + "\n")
+        f.write("// Auto-generated by scraper.py v2 - " + output["lastUpdated"] + "\n")
         f.write("window.INVENTORY_DATA = ")
         json.dump(output, f, ensure_ascii=False, indent=2)
         f.write(";\n")
@@ -202,9 +256,10 @@ def main():
     print(f"⏰ {output['lastUpdated']}")
     print(f"\n📋 在庫一覧:")
     for i, c in enumerate(unique, 1):
+        dims = f"{c.get('length','?')}×{c.get('width','?')}×{c.get('height','?')}mm" if c.get('length') else "---"
         print(f"  {i:2d}. {c.get('maker',''):<8s} {c.get('name',''):<15s} "
               f"{c.get('price','---'):>10s}  {c.get('year','----')}年  "
-              f"{c.get('mileage','---'):>8s}  {c.get('color','---')}")
+              f"{c.get('mileage','---'):>8s}  {dims}")
 
 
 if __name__ == "__main__":

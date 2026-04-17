@@ -539,6 +539,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const headerRow = resultsTableWrap.querySelector('thead tr');
         if (headerRow) {
             headerRow.innerHTML = `
+                <th></th>
                 <th>メーカー</th>
                 <th>車種名</th>
                 <th>グレード</th>
@@ -559,7 +560,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // Render rows
         resultsTableBody.innerHTML = cars.map((car, idx) => {
             const invData = car._inv || {};
+            const imgUrl = invData.image || '';
+            const imgHtml = imgUrl
+                ? `<img src="${esc(imgUrl)}" alt="${esc(car.name)}" class="inv-thumb" loading="lazy">`
+                : '<span class="inv-thumb-empty">🚗</span>';
             return `<tr class="inventory-row" data-inv-idx="${idx}">
+                <td class="inv-image">${imgHtml}</td>
                 <td class="inv-maker">${esc(car.maker)}</td>
                 <td class="inv-name"><strong>${esc(car.name)}</strong></td>
                 <td class="inv-grade">${truncateStr(esc(invData.grade || ''), 30)}</td>
@@ -1037,16 +1043,20 @@ document.addEventListener('DOMContentLoaded', () => {
             || CAR_DATABASE.find(c => c.maker === car.maker && car.name.includes(c.name))
             || CAR_DATABASE.find(c => c.maker === car.maker && c.name && c.name.includes(car.name))
             || null;
-        const fuel = car.fuel || '';
+        const fuel = inv.fuelType || car.fuel || '';
         const fuelEco = car.fuelEco || (dbCar ? getVal(dbCar, 'fuelEco') : '') || '';
-        const engine = (dbCar ? getVal(dbCar, 'engine') : '') || '';
-        const drive = car.drive || '';
-        const seats = car.seats || 0;
-        const cLength = car.length || '';
-        const cWidth = car.width || '';
-        const cHeight = car.height || '';
-        const weight = (dbCar ? getVal(dbCar, 'weight') : '') || '';
+        const engine = inv.engineType || (dbCar ? getVal(dbCar, 'engine') : '') || '';
+        const drive = inv.driveType || car.drive || '';
+        const seats = inv.seats || car.seats || 0;
+        const cLength = inv.length || car.length || '';
+        const cWidth = inv.width || car.width || '';
+        const cHeight = inv.height || car.height || '';
+        const weight = inv.weight || (dbCar ? getVal(dbCar, 'weight') : '') || '';
         const trunk = (dbCar ? getVal(dbCar, 'trunk') : '') || '';
+        const transmission = inv.transmission || '';
+        const doors = inv.doors || '';
+        const seatRows = inv.seatRows || '';
+        const bodyType = inv.bodyType || '';
         const features = dbCar ? dbCar.features || [] : [];
         const talkPoints = dbCar ? (getVal(dbCar, 'talkPoints') || dbCar.talkPoints || []) : [];
         const emoji = car.emoji || '🚗';
@@ -1103,15 +1113,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     <a href="${getMakerUrl(car.maker)}" target="_blank" class="img-link-btn" style="background:rgba(46,204,113,0.15);border-color:rgba(46,204,113,0.3)">🏭 公式サイト</a>
                 </div>
 
-                ${fuelEco || engine || fuel ? `
+                ${fuelEco || engine || fuel || transmission || bodyType ? `
                 <div class="specs-section">
-                    <div class="specs-title">📊 車両スペック (カタログ値)</div>
+                    <div class="specs-title">📊 車両スペック</div>
                     <table class="specs-table">
+                        ${bodyType ? `<tr><td>ボディタイプ</td><td>${bodyType}</td></tr>` : ''}
                         ${fuelEco ? `<tr><td>燃費 (WLTC)</td><td>${fuelEco}</td></tr>` : ''}
                         ${engine ? `<tr><td>エンジン</td><td>${engine}</td></tr>` : ''}
                         ${fuel ? `<tr><td>燃料</td><td>${fuel}</td></tr>` : ''}
-                        ${seats ? `<tr><td>乗車定員</td><td>${seats}人</td></tr>` : ''}
+                        ${seats ? `<tr><td>乗車定員</td><td>${typeof seats === 'number' ? seats + '人' : seats}</td></tr>` : ''}
+                        ${seatRows ? `<tr><td>シート列数</td><td>${seatRows}</td></tr>` : ''}
                         ${drive ? `<tr><td>駆動方式</td><td>${drive}</td></tr>` : ''}
+                        ${transmission ? `<tr><td>ミッション</td><td>${transmission}</td></tr>` : ''}
+                        ${doors ? `<tr><td>ドア数</td><td>${doors}ドア</td></tr>` : ''}
                     </table>
                 </div>` : ''}
 
@@ -1119,10 +1133,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="specs-section">
                     <div class="specs-title">📐 ボディサイズ</div>
                     <table class="specs-table">
-                        ${cLength ? `<tr><td>全長</td><td>${cLength}</td></tr>` : ''}
-                        ${cWidth ? `<tr><td>全幅</td><td>${cWidth}</td></tr>` : ''}
-                        ${cHeight ? `<tr><td>全高</td><td>${cHeight}</td></tr>` : ''}
-                        ${weight ? `<tr><td>車両重量</td><td>${weight}</td></tr>` : ''}
+                        ${cLength ? `<tr><td>全長</td><td>${typeof cLength === 'number' ? cLength + 'mm' : cLength}</td></tr>` : ''}
+                        ${cWidth ? `<tr><td>全幅</td><td>${typeof cWidth === 'number' ? cWidth + 'mm' : cWidth}</td></tr>` : ''}
+                        ${cHeight ? `<tr><td>全高</td><td>${typeof cHeight === 'number' ? cHeight + 'mm' : cHeight}</td></tr>` : ''}
+                        ${weight ? `<tr><td>車両重量</td><td>${typeof weight === 'number' ? weight + 'kg' : weight}</td></tr>` : ''}
                         ${trunk ? `<tr><td>荷室容量</td><td>${trunk}</td></tr>` : ''}
                     </table>
                 </div>` : ''}
