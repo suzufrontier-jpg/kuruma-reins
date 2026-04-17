@@ -89,28 +89,28 @@ def parse_page(html):
         if base_m:
             car["price"] = f"{base_m.group(1)}{base_m.group(2).strip()}万円"
 
-        # Spec boxes
+        # Spec boxes (fallback only - detail page values take priority)
         spec_boxes = re.findall(
             r'specWrap__box__title"[^>]*>([^<]+)</p>\s*<p[^>]*>([^<]+)</p>', block)
         for title, value in spec_boxes:
             t, v = title.strip(), value.strip()
-            if t == "年式": car["year"] = v
-            elif t == "走行距離": car["mileage"] = v + "万km"
-            elif t == "排気量": car["displacement"] = v + "cc"
-            elif t == "修復歴": car["repairHistory"] = v
+            if t == "年式": car["_list_year"] = v
+            elif t == "走行距離": car["_list_mileage"] = v
+            elif t == "排気量": car["_list_displacement"] = v
+            elif t == "修復歴": car["_list_repairHistory"] = v
 
-        # Inspection
+        # Inspection (list page - fallback)
         insp_m = re.search(r'specWrap__box__title"[^>]*>車検有無</p>\s*<p[^>]*>([^<]+)</p>\s*<p[^>]*>([^<]*)</p>', block)
         if insp_m:
             y = insp_m.group(1).strip()
             m_val = insp_m.group(2).strip()
             if "車検整備付" in y:
-                car["inspection"] = "車検整備付"
+                car["_list_inspection"] = "車検整備付"
             else:
                 year_num = re.search(r'(\d{4})', y)
                 month_num = re.search(r'(\d{2})月', m_val)
                 if year_num and month_num:
-                    car["inspection"] = f"{year_num.group(1)}年{month_num.group(1)}月"
+                    car["_list_inspection"] = f"{year_num.group(1)}年{month_num.group(1)}月"
 
         # Image URL
         img_m = re.search(r'data-original="([^"]+\.JPG)"', block, re.IGNORECASE)
@@ -162,6 +162,24 @@ def fetch_detail_info(car):
             car["steering"] = td
         elif th == "ワンオーナー" and td == "◯":
             car["oneOwner"] = True
+        elif "年式" in th:
+            # e.g. "2025(R07)" -> "2025"
+            y_m = re.search(r'(\d{4})', td)
+            if y_m:
+                car["year"] = y_m.group(1)
+        elif th == "走行距離":
+            # Use exact value from detail: e.g. "7km", "0.9万km", "2.2万km"
+            car["mileage"] = td
+        elif th == "排気量":
+            car["displacement"] = td
+        elif th == "修復歴":
+            car["repairHistory"] = td
+        elif th == "車検":
+            car["inspection"] = td
+        elif th == "色":
+            # Detail page color may be more accurate
+            if not car.get("color") or car["color"] == "---":
+                car["color"] = td
 
     # Dimensions: 全長×全幅×全高 (clean HTML first)
     clean_html = re.sub(r'<[^>]+>', ' ', html)
@@ -188,6 +206,23 @@ def fetch_detail_info(car):
     if seat_rows_m:
         car["seatRows"] = seat_rows_m.group(1) + "列"
 
+    # Fallback: if detail page didn't provide, use list page values
+    if not car.get("year") and car.get("_list_year"):
+        car["year"] = car["_list_year"]
+    if not car.get("mileage") and car.get("_list_mileage"):
+        v = car["_list_mileage"]
+        car["mileage"] = v + "万km"
+    if not car.get("displacement") and car.get("_list_displacement"):
+        car["displacement"] = car["_list_displacement"] + "cc"
+    if not car.get("repairHistory") and car.get("_list_repairHistory"):
+        car["repairHistory"] = car["_list_repairHistory"]
+    if not car.get("inspection") and car.get("_list_inspection"):
+        car["inspection"] = car["_list_inspection"]
+
+    # Clean up temp keys
+    for k in list(car.keys()):
+        if k.startswith("_list_"):
+            del car[k]
 
 def main():
     print(f"🚗 くるまれいんず - 在庫データ更新 v2")
