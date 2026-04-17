@@ -1,15 +1,18 @@
 name: 🚗 在庫データ更新
 
 on:
-  # 毎朝8時に自動実行（日本時間）
   schedule:
-    - cron: '0 23 * * *'  # UTC 23:00 = JST 08:00
-  # 手動実行ボタン（ブラウザ・スマホからポチれる）
+    - cron: '0 23 * * *'
   workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   update-inventory:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: 📥 コードを取得
         uses: actions/checkout@v4
@@ -24,7 +27,6 @@ jobs:
 
       - name: 📦 デプロイ用ZIPを作成
         run: |
-          # deploy.py, scraper.py, .github等を除外してZIP作成
           zip -r deploy.zip . \
             -x ".git/*" \
             -x ".github/*" \
@@ -34,32 +36,39 @@ jobs:
             -x "update.command" \
             -x ".netlify_token" \
             -x ".gitignore" \
-            -x "*.py"
+            -x "inventory/scraper.py"
 
       - name: 🚀 Netlifyにデプロイ
+        env:
+          NETLIFY_TOKEN: ${{ secrets.NETLIFY_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
         run: |
-          RESPONSE=$(curl -s -w "\n%{http_code}" \
-            -H "Content-Type: application/zip" \
-            -H "Authorization: Bearer ${{ secrets.NETLIFY_TOKEN }}" \
-            --data-binary @deploy.zip \
-            "https://api.netlify.com/api/v1/sites/${{ secrets.NETLIFY_SITE_ID }}/deploys")
-          
-          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
-          
-          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-            echo "✅ デプロイ成功！"
-            echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'🌐 URL: {d.get(\"ssl_url\",\"\")}'); print(f'📊 状態: {d.get(\"state\",\"\")}')"
-          else
-            echo "❌ デプロイ失敗 (HTTP $HTTP_CODE)"
-            echo "$BODY"
-            exit 1
-          fi
+          python3 -c "
+          import urllib.request, json, os
+          token = os.environ['NETLIFY_TOKEN'].strip()
+          site_id = os.environ['NETLIFY_SITE_ID'].strip()
+          url = f'https://api.netlify.com/api/v1/sites/{site_id}/deploys'
+          with open('deploy.zip', 'rb') as f:
+              data = f.read()
+          req = urllib.request.Request(url, data=data, headers={
+              'Content-Type': 'application/zip',
+              'Authorization': f'Bearer {token}'
+          }, method='POST')
+          try:
+              with urllib.request.urlopen(req, timeout=60) as resp:
+                  result = json.loads(resp.read().decode())
+                  print(f'✅ デプロイ成功！')
+                  print(f'🌐 URL: {result.get(\"ssl_url\",\"\")}')
+                  print(f'📊 状態: {result.get(\"state\",\"\")}')
+          except Exception as e:
+              print(f'❌ デプロイ失敗: {e}')
+              raise
+          "
 
       - name: 📝 在庫データをコミット
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add inventory/inventory.json inventory/inventory.js
-          git diff --staged --quiet || git commit -m "🚗 在庫データ更新 $(date '+%Y/%m/%d %H:%M')"
+          git diff --staged --quiet || git commit -m "🚗 在庫データ更新 $(TZ=Asia/Tokyo date '+%Y/%m/%d %H:%M')"
           git push
