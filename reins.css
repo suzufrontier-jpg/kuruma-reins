@@ -1112,10 +1112,8 @@ body.inventory-mode .results-header {
     font-size: 13px;
 }
 .inv-color {
-    display: flex;
-    align-items: center;
-    gap: 6px;
     font-size: 12px;
+    white-space: nowrap;
 }
 .color-chip {
     display: inline-block;
@@ -1123,7 +1121,8 @@ body.inventory-mode .results-header {
     height: 14px;
     border-radius: 3px;
     border: 1px solid rgba(255,255,255,0.2);
-    flex-shrink: 0;
+    vertical-align: middle;
+    margin-right: 6px;
 }
 .inv-inspection {
     font-size: 12px;
