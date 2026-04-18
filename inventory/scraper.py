@@ -175,7 +175,22 @@ def fetch_detail_info(car):
         elif th == "修復歴":
             car["repairHistory"] = td
         elif th == "車検":
-            car["inspection"] = td
+            # Clean up long inspection text to short form
+            insp = td.strip()
+            if "車検整備付" in insp:
+                car["inspection"] = "車検整備付"
+            elif "車検残：無" in insp or "車検残:無" in insp:
+                car["inspection"] = "車検残：無"
+            elif "車検整備無" in insp or "車検整備別" in insp:
+                car["inspection"] = insp.split("車検")[0] + "車検" if "年" in insp else insp[:10]
+            else:
+                # Extract date: "2027(R09)年6月" -> "2027年6月"
+                import re as _re
+                date_m = _re.search(r'(\d{4})\s*(?:\([^)]*\))?\s*年\s*(\d{1,2})月', insp)
+                if date_m:
+                    car["inspection"] = f"{date_m.group(1)}年{date_m.group(2).lstrip('0') or '0'}月"
+                else:
+                    car["inspection"] = insp[:15]
         elif th == "色":
             # Detail page color may be more accurate
             if not car.get("color") or car["color"] == "---":
